@@ -1,4 +1,3 @@
-
 //=============================================================================
 // Based upon Kurt's PX Reactor arm code.
 // PLEASE NOTE: There is currently a bug upon startup that causes the arm to twitch upon startup. 
@@ -59,7 +58,6 @@
 
 #define OPT_WRISTROT          // comment this out if you are not using Wrist Rotate
 #define ARBOTIX_TO  1000      // if no message for a second probably turned off...
-#define DEADZONE    3        // deadzone around center of joystick values
 #define SOUND_PIN    7      // Tell system we have added speaker to IO pin 1
 #define MAX_SERVO_DELTA_PERSEC 512
 //#define DEBUG             // Enable Debug mode via serial
@@ -113,7 +111,7 @@ enum {
 
 // Define Ranges for the different servos...
 #define BASE_MIN    0
-#define BASE_MAX    4096
+#define BASE_MAX    4095
 
 #define SHOULDER_MIN  1024 
 #define SHOULDER_MAX  3072
@@ -201,6 +199,7 @@ void setup() {
 //  lcd.print("Reactor Online.");  
 //  delay(2000);
 //  lcd.clear();
+  delay(1000);
   Serial.println("WidowX Online.");
   
   // Next initialize the Bioloid
@@ -208,10 +207,8 @@ void setup() {
 
   // Read in the current positions...
   bioloid.readPose();
-    delay(100);
+  delay(100);
   // Start off to put arm to sleep...
-
-
   PutArmToSleep();
 
   MSound(3, 60, 2000, 80, 2250, 100, 2500);
@@ -476,11 +473,11 @@ void MoveArmToHome(void) {
 
   if (g_bIKMode != IKM_BACKHOE) {
     g_bIKStatus = doArmIK(true, 0, (2*ElbowLength)/3+WristLength, BaseHeight+(2*ShoulderLength)/3, 0);
-    MoveArmTo(sBase, sShoulder, sElbow, sWrist, 512, 256, 500, true);
+    MoveArmTo(sBase, sShoulder, sElbow, sWrist, 512, 256, 2000, true);
   }
   else {
-    g_bIKStatus = IKS_SUCCESS;  // assume sucess so we will continue to move...
-    MoveArmTo(2048, 2048, 2048, 2048, 512, 256, 500, true);
+    g_bIKStatus = IKS_SUCCESS;  // assume sucess soe we will continue to move...
+    MoveArmTo(2048, 2048, 2048, 2048, 512, 256, 2000, true);
   }
 }
 
@@ -489,7 +486,7 @@ void MoveArmToHome(void) {
 //===================================================================================================
 void PutArmToSleep(void) {
   g_fArmActive = false;
-  MoveArmTo(2048, 1024, 1024, 1700, 512, 256, 1000, true);
+  MoveArmTo(2048, 1024, 1024, 1700, 512, 256, 2000, true);
 
   // And Relax all of the servos...
   for(uint8_t i=1; i <= CNT_SERVOS; i++) {
@@ -513,7 +510,8 @@ void MoveArmTo(int sBase, int sShoulder, int sElbow, int sWrist, int sWristRot, 
 
     for(uint8_t i=1; i <= CNT_SERVOS; i++) {
       TorqueOn(i);
-    }
+    }  
+    delay(100);    //required due to power dip on TorqueOn
     bioloid.readPose();
   }
 
@@ -574,6 +572,8 @@ void MoveArmTo(int sBase, int sShoulder, int sElbow, int sWrist, int sWristRot, 
   g_sWristRot = sWristRot;
   g_sGrip = sGrip;
 
+
+
   // Now start the move - But first make sure we don't move too fast.  
 //  if (((long)sMaxDelta*wTime/1000L) > MAX_SERVO_DELTA_PERSEC) {
 //    wTime = ((long)sMaxDelta*1000L)/ MAX_SERVO_DELTA_PERSEC;
@@ -625,13 +625,13 @@ uint8_t doArmIK(boolean fCartesian, int sIKX, int sIKY, int sIKZ, int sIKGA)
   }
 #endif
   if (fCartesian) {
-    // first, make this a 2DOF problem... by solving base
+    // first, make this a 2DOF problem... by solving baseAngle, converting to servo pos
     sol0 = radToServo(atan2(sIKX,sIKY));
     // remove gripper offset from base
     t = sqrt(sq((long)sIKX)+sq((long)sIKY));
     // BUGBUG... Not sure about G here
-#define G 30   
-    sol0 -= radToServo(atan2((G/2)-G_OFFSET,t));
+//#define G 10   
+ //   sol0 -= radToServo(atan2((G/2)-G_OFFSET,t));
   }
   else {
     // We are in cylindrical mode, probably simply set t to the y we passed in...
@@ -687,7 +687,7 @@ uint8_t doArmIK(boolean fCartesian, int sIKX, int sIKY, int sIKZ, int sIKGA)
   sShoulder = min(max(2048 - sol1, SHOULDER_MIN), SHOULDER_MAX);
 
   // Magic Number 819???
-  sElbow = min(max(3072 - sol2, SHOULDER_MIN), SHOULDER_MAX);
+  sElbow = min(max(3072 - sol2, ELBOW_MIN), ELBOW_MAX);
 
 #define Wrist_Offset 2048
   sWrist = min(max(Wrist_Offset + sol3, WRIST_MIN), WRIST_MAX);
